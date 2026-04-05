@@ -158,52 +158,39 @@
     <!-- 结果区 -->
     <div id="results-a" class="hidden">
 
-      <!-- 汇总卡 -->
-      <div id="summaryCards-a" class="grid grid-cols-4 gap-3 mb-4"></div>
-
-      <!-- 筛选 -->
-      <div class="card py-3 flex items-center gap-3">
-        <span class="text-sm text-slate-600 font-medium">筛选显示：</span>
-        <button id="filter-all" onclick="filterRows('all')" class="px-3 py-1 rounded-lg text-sm bg-indigo-600 text-white font-medium">全部</button>
-        <button id="filter-err" onclick="filterRows('err')" class="px-3 py-1 rounded-lg text-sm bg-slate-100 text-slate-600 hover:bg-slate-200">仅显示差异</button>
-        <button id="filter-ok" onclick="filterRows('ok')" class="px-3 py-1 rounded-lg text-sm bg-slate-100 text-slate-600 hover:bg-slate-200">仅显示一致</button>
-        <div class="ml-auto">
-          <input id="searchInput" oninput="filterRows(currentFilter)" placeholder="搜索漫剧ID…" class="border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+      <!-- 汇总报告 -->
+      <div class="card mb-4">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-bold text-slate-800">📋 汇总报告</h2>
+          <span id="report-time" class="text-xs text-slate-400"></span>
         </div>
+
+        <!-- 核心指标 -->
+        <div id="summaryCards-a" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
+
+        <!-- 分项说明 -->
+        <div id="reportDetail" class="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 leading-7 space-y-1"></div>
       </div>
 
-      <!-- 收入成本表 -->
+      <!-- 差异明细（最多10条） -->
       <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <h2 class="text-sm font-bold text-slate-800">校验 1 & 2：收入 / 成本对比</h2>
-          <span id="badge1-a" class="badge"></span>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold text-slate-800">差异明细</h2>
+            <span class="text-xs text-slate-400">（仅展示前 10 条，完整数据请下载）</span>
+          </div>
+          <button onclick="downloadResult()" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition">
+            ⬇️ 下载完整结果
+          </button>
         </div>
-        <div class="overflow-x-auto max-h-80 overflow-y-auto">
-          <table id="table1-a"></table>
+        <div class="overflow-x-auto">
+          <table id="table-err-preview"></table>
         </div>
-      </div>
-
-      <!-- 结算表 -->
-      <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-          <h2 class="text-sm font-bold text-slate-800">结算金额计算 & 对比（校验 3）</h2>
-          <span id="badge2-a" class="badge"></span>
-        </div>
-        <div class="overflow-x-auto max-h-80 overflow-y-auto">
-          <table id="table2-a"></table>
+        <div id="more-hint" class="hidden text-center text-slate-400 text-sm py-3 border-t border-slate-100 mt-1">
+          ... 还有 <span id="more-count"></span> 条差异数据，下载 Excel 查看全部
         </div>
       </div>
 
-      <!-- 下载 -->
-      <div class="card flex items-center gap-4 py-3">
-        <div>
-          <div class="font-semibold text-slate-800 text-sm">下载分析结果</div>
-          <div class="text-xs text-slate-500">包含差异标注 + 计算列</div>
-        </div>
-        <button onclick="downloadResult()" class="ml-auto px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
-          ⬇️ 下载 Excel
-        </button>
-      </div>
     </div>
   </div>
 
@@ -312,73 +299,94 @@ function analyzeA(s1, s2) {
 }
 
 function fmt(v) { return Number(v).toLocaleString('zh-CN',{maximumFractionDigits:2}); }
-
-function filterRows(mode) {
-  currentFilter = mode;
-  ['all','err','ok'].forEach(m => {
-    const btn = document.getElementById('filter-'+m);
-    btn.className = m === mode
-      ? 'px-3 py-1 rounded-lg text-sm bg-indigo-600 text-white font-medium'
-      : 'px-3 py-1 rounded-lg text-sm bg-slate-100 text-slate-600 hover:bg-slate-200';
-  });
-  renderA();
-}
+function fmtSign(v) { return (v > 0 ? '+' : '') + fmt(v); }
 
 function renderA() {
-  const search = (document.getElementById('searchInput').value || '').toLowerCase();
-  let rows = analysisData;
-  if (currentFilter === 'err') rows = rows.filter(r => r.hasErr);
-  if (currentFilter === 'ok')  rows = rows.filter(r => !r.hasErr);
-  if (search) rows = rows.filter(r => r.id.toLowerCase().includes(search));
-
-  const errCount1 = analysisData.filter(r => !r.收入ok||!r.成本ok).length;
-  const errCount2 = analysisData.filter(r => !r.结算ok).length;
   const total = analysisData.length;
+  const errRows = analysisData.filter(r => r.hasErr);
+  const okRows  = analysisData.filter(r => !r.hasErr);
+
+  const 收入差异行 = analysisData.filter(r => !r.收入ok);
+  const 成本差异行 = analysisData.filter(r => !r.成本ok);
+  const 结算差异行 = analysisData.filter(r => !r.结算ok);
+
+  const sum = (arr, fn) => arr.reduce((s, r) => s + fn(r), 0);
+  const 总收入差 = sum(收入差异行, r => r.s1收入 - r.s2收入);
+  const 总成本差 = sum(成本差异行, r => r.s1成本 - r.s2成本);
+  const 总结算差 = sum(结算差异行, r => r.s1结算 - r.计算结算);
+
+  // 时间戳
+  document.getElementById('report-time').textContent = '分析时间：' + new Date().toLocaleString('zh-CN');
 
   // 汇总卡
   document.getElementById('summaryCards-a').innerHTML = [
-    { label:'数据行数', val: total+' 行', color:'text-slate-800' },
-    { label:'收入/成本差异', val: errCount1+' 条', color: errCount1?'text-red-600':'text-green-600' },
-    { label:'结算金额差异', val: errCount2+' 条', color: errCount2?'text-red-600':'text-green-600' },
-    { label:'数据状态', val: (errCount1+errCount2===0)?'✅ 全部一致':'⚠️ 有差异', color: (errCount1+errCount2===0)?'text-green-600':'text-amber-600' },
-  ].map(c=>`<div class="card py-4 text-center mb-0">
+    { label:'数据总行数', val: total+' 行', color:'text-slate-800', bg:'bg-slate-50' },
+    { label:'差异行数', val: errRows.length+' 行', sub: `占比 ${(errRows.length/total*100).toFixed(1)}%`, color: errRows.length?'text-red-600':'text-green-600', bg: errRows.length?'bg-red-50':'bg-green-50' },
+    { label:'一致行数', val: okRows.length+' 行', sub: `占比 ${(okRows.length/total*100).toFixed(1)}%`, color:'text-green-600', bg:'bg-green-50' },
+    { label:'整体状态', val: errRows.length===0?'✅ 全部一致':'⚠️ 存在差异', color: errRows.length===0?'text-green-600':'text-amber-600', bg: errRows.length===0?'bg-green-50':'bg-amber-50' },
+  ].map(c=>`<div class="${c.bg} rounded-xl py-4 px-4 text-center">
     <div class="text-lg font-bold ${c.color}">${c.val}</div>
-    <div class="text-xs text-slate-500 mt-0.5">${c.label}</div>
+    ${c.sub ? `<div class="text-xs text-slate-400 mt-0.5">${c.sub}</div>` : ''}
+    <div class="text-xs text-slate-500 mt-1">${c.label}</div>
   </div>`).join('');
 
-  const setBadge = (id, err) => {
-    const el = document.getElementById(id);
-    el.textContent = err===0 ? '✅ 全部一致' : `⚠️ ${err} 条差异`;
-    el.className = 'badge ' + (err===0 ? 'tag-ok' : 'tag-err');
-  };
-  setBadge('badge1-a', errCount1);
-  setBadge('badge2-a', errCount2);
+  // 分项说明文字
+  const lines = [];
+  if (收入差异行.length === 0) {
+    lines.push('✅ <b>收入校验</b>：全部 ' + total + ' 行一致，无差异。');
+  } else {
+    lines.push(`❌ <b>收入校验</b>：共 <b>${收入差异行.length}</b> 行不一致，Sheet1 总收入与 Sheet2 明细合计偏差累计 <b>${fmtSign(总收入差)}</b>。`);
+  }
+  if (成本差异行.length === 0) {
+    lines.push('✅ <b>成本校验</b>：全部 ' + total + ' 行一致，无差异。');
+  } else {
+    lines.push(`❌ <b>成本校验</b>：共 <b>${成本差异行.length}</b> 行不一致，Sheet1 总成本与 Sheet2 明细合计偏差累计 <b>${fmtSign(总成本差)}</b>。`);
+  }
+  if (结算差异行.length === 0) {
+    lines.push('✅ <b>结算金额</b>：按公式计算后全部 ' + total + ' 行一致，无差异。');
+  } else {
+    const 多付 = 结算差异行.filter(r => r.s1结算 > r.计算结算).length;
+    const 少付 = 结算差异行.filter(r => r.s1结算 < r.计算结算).length;
+    lines.push(`❌ <b>结算金额</b>：共 <b>${结算差异行.length}</b> 行不一致（多付 ${多付} 行 / 少付 ${少付} 行），Sheet1 与计算值累计偏差 <b>${fmtSign(总结算差)}</b>。`);
+  }
+  document.getElementById('reportDetail').innerHTML = lines.map(l => `<div>${l}</div>`).join('');
 
-  // 表1
-  document.getElementById('table1-a').innerHTML =
-    `<tr><th>漫剧ID</th><th>Sheet1 总收入</th><th>Sheet2 收入合计</th><th>收入状态</th><th>Sheet1 总成本</th><th>Sheet2 成本合计</th><th>成本状态</th></tr>` +
-    rows.map(r=>`<tr>
-      <td class="font-mono text-slate-600 text-xs">${r.id}</td>
-      <td class="${r.收入ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1收入)}</td>
-      <td class="${r.收入ok?'cell-ok':'cell-err'} text-right">${fmt(r.s2收入)}</td>
-      <td class="text-center">${r.收入ok?'<span class="badge tag-ok">✓</span>':`<span class="badge tag-err">差 ${fmt(r.s1收入-r.s2收入)}</span>`}</td>
-      <td class="${r.成本ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1成本)}</td>
-      <td class="${r.成本ok?'cell-ok':'cell-err'} text-right">${fmt(r.s2成本)}</td>
-      <td class="text-center">${r.成本ok?'<span class="badge tag-ok">✓</span>':`<span class="badge tag-err">差 ${fmt(r.s1成本-r.s2成本)}</span>`}</td>
-    </tr>`).join('');
+  // 差异明细表（最多10条，仅展示有问题的行）
+  const preview = errRows.slice(0, 10);
+  const moreCount = errRows.length - 10;
 
-  // 表2
-  document.getElementById('table2-a').innerHTML =
-    `<tr><th>漫剧ID</th><th>自然流分成</th><th>分销项</th><th>自投项</th><th>计算结算金额</th><th>Sheet1 结算金额</th><th>结算状态</th></tr>` +
-    rows.map(r=>`<tr>
-      <td class="font-mono text-slate-600 text-xs">${r.id}</td>
-      <td class="cell-calc text-right">${fmt(r.自然流)}</td>
-      <td class="cell-calc text-right">${fmt(r.分销项)}</td>
-      <td class="cell-calc text-right">${fmt(r.自投项)}</td>
-      <td class="cell-calc text-right font-bold">${fmt(r.计算结算)}</td>
-      <td class="${r.结算ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1结算)}</td>
-      <td class="text-center">${r.结算ok?'<span class="badge tag-ok">✓</span>':`<span class="badge tag-err">差 ${fmt(r.s1结算-r.计算结算)}</span>`}</td>
-    </tr>`).join('');
+  document.getElementById('table-err-preview').innerHTML = errRows.length === 0
+    ? '<tr><td colspan="7" class="text-center text-green-600 py-6">🎉 无任何差异，数据全部一致！</td></tr>'
+    : `<tr>
+        <th>漫剧ID</th>
+        <th>收入差异</th>
+        <th>成本差异</th>
+        <th>Sheet1 结算</th>
+        <th>计算结算</th>
+        <th>结算差异</th>
+        <th>问题类型</th>
+      </tr>` + preview.map(r => {
+        const types = [];
+        if (!r.收入ok) types.push('收入');
+        if (!r.成本ok) types.push('成本');
+        if (!r.结算ok) types.push('结算');
+        return `<tr>
+          <td class="font-mono text-xs text-slate-600">${r.id}</td>
+          <td class="${r.收入ok?'':'cell-err'} text-right">${r.收入ok ? '<span class="text-slate-400">—</span>' : fmtSign(r.s1收入-r.s2收入)}</td>
+          <td class="${r.成本ok?'':'cell-err'} text-right">${r.成本ok ? '<span class="text-slate-400">—</span>' : fmtSign(r.s1成本-r.s2成本)}</td>
+          <td class="text-right">${fmt(r.s1结算)}</td>
+          <td class="cell-calc text-right">${fmt(r.计算结算)}</td>
+          <td class="${r.结算ok?'':'cell-err'} text-right">${r.结算ok ? '<span class="text-slate-400">—</span>' : fmtSign(r.s1结算-r.计算结算)}</td>
+          <td class="text-center">${types.map(t=>`<span class="badge tag-err mr-1">${t}</span>`).join('')}</td>
+        </tr>`;
+      }).join('');
+
+  if (moreCount > 0) {
+    document.getElementById('more-hint').classList.remove('hidden');
+    document.getElementById('more-count').textContent = moreCount;
+  } else {
+    document.getElementById('more-hint').classList.add('hidden');
+  }
 
   document.getElementById('results-a').classList.remove('hidden');
 }
