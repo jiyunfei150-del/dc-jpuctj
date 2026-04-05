@@ -3,329 +3,401 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>漫剧结算分析工具</title>
+<title>数据分析平台</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; }
+  .sidebar { width: 240px; min-width: 240px; }
+  .nav-item { cursor: pointer; border-radius: 8px; padding: 8px 12px; transition: all .15s; display: flex; align-items: center; gap: 8px; }
+  .nav-item:hover { background: rgba(255,255,255,.08); }
+  .nav-item.active { background: rgba(255,255,255,.15); color: #fff; font-weight: 600; }
+  .nav-item .icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .nav-group-title { font-size: 11px; font-weight: 600; letter-spacing: .05em; color: rgba(255,255,255,.4); padding: 12px 12px 4px; text-transform: uppercase; }
   .drop-zone { border: 2px dashed #6366f1; transition: all .2s; }
   .drop-zone.over { border-color: #4f46e5; background: #eef2ff; }
   .tag-ok   { background:#dcfce7; color:#166534; border:1px solid #86efac; }
   .tag-err  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
-  .tag-warn { background:#fef9c3; color:#854d0e; border:1px solid #fde047; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th { background:#f8fafc; color:#475569; font-weight:600; padding:8px 12px; border:1px solid #e2e8f0; white-space:nowrap; }
   td { padding:7px 12px; border:1px solid #e2e8f0; }
   tr:hover td { background:#f8fafc; }
-  .cell-ok  { background:#f0fdf4; }
-  .cell-err { background:#fef2f2; font-weight:600; color:#dc2626; }
+  .cell-ok   { background:#f0fdf4; }
+  .cell-err  { background:#fef2f2; font-weight:600; color:#dc2626; }
   .cell-calc { background:#eff6ff; color:#1d4ed8; font-weight:600; }
-  .section { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+  .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
+  .tool-placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; height:60vh; color:#94a3b8; }
+  /* 滚动条美化 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 3px; }
 </style>
 </head>
-<body class="bg-slate-50 min-h-screen p-6">
+<body class="bg-slate-50 h-screen flex overflow-hidden">
 
-<div class="max-w-6xl mx-auto">
-  <!-- 标题 -->
-  <div class="mb-6">
-    <h1 class="text-2xl font-bold text-slate-800">📊 漫剧结算分析工具</h1>
-    <p class="text-slate-500 mt-1 text-sm">上传 Excel 文件，自动完成收入/成本校验 · 结算金额计算 · 差异标注</p>
-  </div>
-
-  <!-- 上传区 -->
-  <div class="section" id="uploadSection">
-    <div class="drop-zone rounded-xl p-10 text-center cursor-pointer" id="dropZone">
-      <div class="text-4xl mb-3">📂</div>
-      <p class="text-slate-600 font-medium">拖拽 Excel 文件到此处，或点击选择文件</p>
-      <p class="text-slate-400 text-sm mt-1">支持 .xlsx / .xls 格式，需包含 Sheet1（汇总）和 Sheet2（明细）</p>
-      <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden">
-      <button onclick="document.getElementById('fileInput').click()"
-        class="mt-4 px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
-        选择文件
-      </button>
-    </div>
-
-    <!-- 说明 -->
-    <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-slate-600">
-      <div class="bg-slate-50 rounded-lg p-3">
-        <div class="font-semibold text-slate-700 mb-1">✅ 校验 1：总收入</div>
-        Sheet1.总收入 = Sheet2.(自然流 + 分销收入 + 自投收入)
-      </div>
-      <div class="bg-slate-50 rounded-lg p-3">
-        <div class="font-semibold text-slate-700 mb-1">✅ 校验 2：总成本</div>
-        Sheet1.总成本 = Sheet2.(分销成本 + 代投服务费 + 代投消耗)
-      </div>
-      <div class="bg-slate-50 rounded-lg p-3">
-        <div class="font-semibold text-slate-700 mb-1">✅ 校验 3：结算金额</div>
-        按分成比例公式计算，与 Sheet1 结算金额对比
-      </div>
-    </div>
-  </div>
-
-  <!-- 文件信息 -->
-  <div id="fileInfo" class="hidden section flex items-center gap-3">
-    <div class="text-2xl">📄</div>
-    <div>
-      <div id="fileName" class="font-semibold text-slate-800"></div>
-      <div id="fileStats" class="text-sm text-slate-500"></div>
-    </div>
-    <button onclick="resetApp()" class="ml-auto text-sm text-slate-500 hover:text-red-500 transition">重新上传</button>
-  </div>
-
-  <!-- 结果区 -->
-  <div id="results" class="hidden">
-
-    <!-- 汇总卡片 -->
-    <div id="summaryCards" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
-
-    <!-- 收入对比 -->
-    <div class="section">
-      <div class="flex items-center gap-2 mb-4">
-        <h2 class="text-base font-bold text-slate-800">校验 1 & 2：收入 / 成本对比</h2>
-        <span id="badge1" class="badge"></span>
-      </div>
-      <div class="overflow-x-auto">
-        <table id="table1"></table>
-      </div>
-    </div>
-
-    <!-- 结算金额计算 -->
-    <div class="section">
-      <div class="flex items-center gap-2 mb-4">
-        <h2 class="text-base font-bold text-slate-800">结算金额计算 & 对比（校验 3）</h2>
-        <span id="badge2" class="badge"></span>
-      </div>
-      <div class="overflow-x-auto">
-        <table id="table2"></table>
-      </div>
-    </div>
-
-    <!-- 下载 -->
-    <div class="section flex items-center gap-4">
+<!-- ===== 左侧导航 ===== -->
+<aside class="sidebar bg-slate-800 flex flex-col h-screen overflow-y-auto flex-shrink-0">
+  <!-- Logo -->
+  <div class="px-4 py-5 border-b border-slate-700">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">D</div>
       <div>
-        <div class="font-semibold text-slate-800">下载分析结果</div>
-        <div class="text-sm text-slate-500">包含差异标注 + 计算列，可直接用于对账</div>
+        <div class="text-white font-bold text-sm">数据分析平台</div>
+        <div class="text-slate-400 text-xs">Data Analysis Tools</div>
       </div>
-      <button id="downloadBtn" onclick="downloadResult()"
-        class="ml-auto px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
-        ⬇️ 下载 Excel
-      </button>
     </div>
-
   </div>
 
-  <div id="errorBox" class="hidden section border-red-200 bg-red-50 text-red-700 text-sm"></div>
-</div>
+  <!-- 导航菜单 -->
+  <nav class="flex-1 px-3 py-3 space-y-1">
+
+    <div class="nav-group-title">结算分析</div>
+
+    <div class="nav-item active text-slate-200" data-tool="scene-a" onclick="switchTool('scene-a', this)">
+      <div class="icon bg-indigo-500/20 text-indigo-300">📊</div>
+      <div>
+        <div class="text-sm">漫剧结算对账</div>
+        <div class="text-xs text-slate-400 font-normal">Scene A</div>
+      </div>
+    </div>
+
+    <!-- 占位：未来工具 -->
+    <div class="nav-group-title mt-2">数据处理</div>
+
+    <div class="nav-item text-slate-400 cursor-not-allowed opacity-50" title="即将上线">
+      <div class="icon bg-slate-700 text-slate-500">🔀</div>
+      <div>
+        <div class="text-sm">多表合并</div>
+        <div class="text-xs text-slate-500 font-normal">Coming soon</div>
+      </div>
+    </div>
+
+    <div class="nav-item text-slate-400 cursor-not-allowed opacity-50" title="即将上线">
+      <div class="icon bg-slate-700 text-slate-500">🧹</div>
+      <div>
+        <div class="text-sm">数据清洗</div>
+        <div class="text-xs text-slate-500 font-normal">Coming soon</div>
+      </div>
+    </div>
+
+    <div class="nav-group-title mt-2">报表</div>
+
+    <div class="nav-item text-slate-400 cursor-not-allowed opacity-50" title="即将上线">
+      <div class="icon bg-slate-700 text-slate-500">📈</div>
+      <div>
+        <div class="text-sm">数据透视</div>
+        <div class="text-xs text-slate-500 font-normal">Coming soon</div>
+      </div>
+    </div>
+
+  </nav>
+
+  <!-- 底部 -->
+  <div class="px-4 py-3 border-t border-slate-700 text-xs text-slate-500">
+    本地处理 · 数据不上传
+  </div>
+</aside>
+
+<!-- ===== 主内容区 ===== -->
+<main class="flex-1 overflow-y-auto bg-slate-50">
+
+  <!-- ===== Scene A：漫剧结算对账 ===== -->
+  <div id="tool-scene-a" class="p-6 max-w-6xl mx-auto">
+
+    <!-- 标题 -->
+    <div class="mb-5">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-medium">Scene A</span>
+      </div>
+      <h1 class="text-xl font-bold text-slate-800">漫剧结算对账</h1>
+      <p class="text-slate-500 text-sm mt-0.5">上传 Excel，自动完成收入 / 成本校验 · 结算金额计算 · 差异标注</p>
+    </div>
+
+    <!-- 上传区 -->
+    <div class="card" id="uploadSection-a">
+      <div class="drop-zone rounded-xl p-10 text-center cursor-pointer" id="dropZone-a">
+        <div class="text-4xl mb-3">📂</div>
+        <p class="text-slate-600 font-medium">拖拽 Excel 文件到此处，或点击选择</p>
+        <p class="text-slate-400 text-sm mt-1">需包含 Sheet1（汇总）和 Sheet2（明细 + 分成比例列）</p>
+        <input type="file" id="fileInput-a" accept=".xlsx,.xls" class="hidden">
+        <button onclick="document.getElementById('fileInput-a').click()"
+          class="mt-4 px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
+          选择文件
+        </button>
+      </div>
+      <div class="mt-3 grid grid-cols-3 gap-3 text-sm text-slate-600">
+        <div class="bg-slate-50 rounded-lg p-3">
+          <div class="font-semibold text-slate-700 mb-1">✅ 校验 1：总收入</div>
+          Sheet1.总收入 = 自然流 + 分销收入 + 自投收入
+        </div>
+        <div class="bg-slate-50 rounded-lg p-3">
+          <div class="font-semibold text-slate-700 mb-1">✅ 校验 2：总成本</div>
+          Sheet1.总成本 = 分销成本 + 代投服务费 + 代投消耗
+        </div>
+        <div class="bg-slate-50 rounded-lg p-3">
+          <div class="font-semibold text-slate-700 mb-1">✅ 校验 3：结算金额</div>
+          按分成比例公式计算，与 Sheet1 结算金额对比
+        </div>
+      </div>
+    </div>
+
+    <!-- 文件信息 -->
+    <div id="fileInfo-a" class="hidden card flex items-center gap-3 py-3">
+      <div class="text-2xl">📄</div>
+      <div>
+        <div id="fileName-a" class="font-semibold text-slate-800 text-sm"></div>
+        <div id="fileStats-a" class="text-xs text-slate-500 mt-0.5"></div>
+      </div>
+      <button onclick="resetA()" class="ml-auto text-xs text-slate-400 hover:text-red-500 transition px-3 py-1 border border-slate-200 rounded-lg">重新上传</button>
+    </div>
+
+    <!-- 错误提示 -->
+    <div id="errorBox-a" class="hidden card border-red-200 bg-red-50 text-red-700 text-sm py-3"></div>
+
+    <!-- 结果区 -->
+    <div id="results-a" class="hidden">
+
+      <!-- 汇总卡 -->
+      <div id="summaryCards-a" class="grid grid-cols-4 gap-3 mb-4"></div>
+
+      <!-- 筛选 -->
+      <div class="card py-3 flex items-center gap-3">
+        <span class="text-sm text-slate-600 font-medium">筛选显示：</span>
+        <button id="filter-all" onclick="filterRows('all')" class="px-3 py-1 rounded-lg text-sm bg-indigo-600 text-white font-medium">全部</button>
+        <button id="filter-err" onclick="filterRows('err')" class="px-3 py-1 rounded-lg text-sm bg-slate-100 text-slate-600 hover:bg-slate-200">仅显示差异</button>
+        <button id="filter-ok" onclick="filterRows('ok')" class="px-3 py-1 rounded-lg text-sm bg-slate-100 text-slate-600 hover:bg-slate-200">仅显示一致</button>
+        <div class="ml-auto">
+          <input id="searchInput" oninput="filterRows(currentFilter)" placeholder="搜索漫剧ID…" class="border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+        </div>
+      </div>
+
+      <!-- 收入成本表 -->
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <h2 class="text-sm font-bold text-slate-800">校验 1 & 2：收入 / 成本对比</h2>
+          <span id="badge1-a" class="badge"></span>
+        </div>
+        <div class="overflow-x-auto max-h-80 overflow-y-auto">
+          <table id="table1-a"></table>
+        </div>
+      </div>
+
+      <!-- 结算表 -->
+      <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+          <h2 class="text-sm font-bold text-slate-800">结算金额计算 & 对比（校验 3）</h2>
+          <span id="badge2-a" class="badge"></span>
+        </div>
+        <div class="overflow-x-auto max-h-80 overflow-y-auto">
+          <table id="table2-a"></table>
+        </div>
+      </div>
+
+      <!-- 下载 -->
+      <div class="card flex items-center gap-4 py-3">
+        <div>
+          <div class="font-semibold text-slate-800 text-sm">下载分析结果</div>
+          <div class="text-xs text-slate-500">包含差异标注 + 计算列</div>
+        </div>
+        <button onclick="downloadResult()" class="ml-auto px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
+          ⬇️ 下载 Excel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 其他工具占位 ===== -->
+  <div id="tool-coming-soon" class="hidden p-6">
+    <div class="tool-placeholder">
+      <div class="text-6xl mb-4">🚧</div>
+      <div class="text-lg font-semibold text-slate-600">功能开发中</div>
+      <div class="text-sm mt-1">有新需求？告诉小D来实现</div>
+    </div>
+  </div>
+
+</main>
 
 <script>
-// ===== 全局状态 =====
-let sheet1Data = [], sheet2Data = [], analysisResult = null;
+// ===== 工具切换 =====
+let currentTool = 'scene-a';
+function switchTool(tool, el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el && el.classList.add('active');
+  document.querySelectorAll('[id^="tool-"]').forEach(d => d.classList.add('hidden'));
+  const target = document.getElementById('tool-' + tool);
+  if (target) target.classList.remove('hidden');
+  else document.getElementById('tool-coming-soon').classList.remove('hidden');
+  currentTool = tool;
+}
 
-// ===== 拖拽上传 =====
-const dropZone = document.getElementById('dropZone');
+// ===== Scene A 逻辑 =====
+let analysisData = [];
+let currentFilter = 'all';
+
+const dropZone = document.getElementById('dropZone-a');
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
-dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('over'); handleFile(e.dataTransfer.files[0]); });
-document.getElementById('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('over'); handleFileA(e.dataTransfer.files[0]); });
+document.getElementById('fileInput-a').addEventListener('change', e => handleFileA(e.target.files[0]));
 
-function resetApp() {
-  document.getElementById('fileInfo').classList.add('hidden');
-  document.getElementById('results').classList.add('hidden');
-  document.getElementById('errorBox').classList.add('hidden');
-  document.getElementById('uploadSection').classList.remove('hidden');
-  document.getElementById('fileInput').value = '';
+function resetA() {
+  document.getElementById('fileInfo-a').classList.add('hidden');
+  document.getElementById('results-a').classList.add('hidden');
+  document.getElementById('errorBox-a').classList.add('hidden');
+  document.getElementById('uploadSection-a').classList.remove('hidden');
+  document.getElementById('fileInput-a').value = '';
+  analysisData = [];
 }
 
-function showError(msg) {
-  const box = document.getElementById('errorBox');
+function showErrorA(msg) {
+  const box = document.getElementById('errorBox-a');
   box.textContent = '❌ ' + msg;
   box.classList.remove('hidden');
-  document.getElementById('results').classList.add('hidden');
+  document.getElementById('results-a').classList.add('hidden');
 }
 
-// ===== 读取 Excel =====
-function handleFile(file) {
+function handleFileA(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     try {
       const wb = XLSX.read(e.target.result, { type: 'binary' });
       if (!wb.SheetNames.includes('Sheet1') || !wb.SheetNames.includes('Sheet2')) {
-        showError('文件必须包含 Sheet1（汇总）和 Sheet2（明细）'); return;
+        showErrorA('文件必须包含 Sheet1（汇总）和 Sheet2（明细）'); return;
       }
-      sheet1Data = XLSX.utils.sheet_to_json(wb.Sheets['Sheet1'], { defval: 0 });
-      sheet2Data = XLSX.utils.sheet_to_json(wb.Sheets['Sheet2'], { defval: 0 });
+      const s1 = XLSX.utils.sheet_to_json(wb.Sheets['Sheet1'], { defval: 0 });
+      const s2 = XLSX.utils.sheet_to_json(wb.Sheets['Sheet2'], { defval: 0 });
 
-      // 文件信息
-      document.getElementById('uploadSection').classList.add('hidden');
-      document.getElementById('fileInfo').classList.remove('hidden');
-      document.getElementById('fileName').textContent = file.name;
-      document.getElementById('fileStats').textContent =
-        `Sheet1: ${sheet1Data.length} 行 | Sheet2: ${sheet2Data.length} 行`;
+      const requiredS2 = ['漫剧ID','自然流收入','分销收入','分销成本','自投收入','代投服务费','代投消耗','自然流分成比例','他投分成比例'];
+      const missing = requiredS2.filter(k => !Object.keys(s2[0]||{}).includes(k));
+      if (missing.length) { showErrorA('Sheet2 缺少列：' + missing.join('、')); return; }
 
-      analyze();
-    } catch(err) { showError('解析失败：' + err.message); }
+      document.getElementById('uploadSection-a').classList.add('hidden');
+      document.getElementById('fileInfo-a').classList.remove('hidden');
+      document.getElementById('fileName-a').textContent = file.name;
+      document.getElementById('fileStats-a').textContent = `Sheet1: ${s1.length} 行 | Sheet2: ${s2.length} 行`;
+      document.getElementById('errorBox-a').classList.add('hidden');
+
+      analyzeA(s1, s2);
+    } catch(err) { showErrorA('解析失败：' + err.message); }
   };
   reader.readAsBinaryString(file);
 }
 
-// ===== 核心分析 =====
-function analyze() {
-  document.getElementById('errorBox').classList.add('hidden');
-
-  // 字段名检查
-  const s1keys = Object.keys(sheet1Data[0] || {});
-  const s2keys = Object.keys(sheet2Data[0] || {});
-  const requiredS1 = ['漫剧ID','总收入','总成本','结算金额'];
-  const requiredS2 = ['漫剧ID','自然流收入','分销收入','分销成本','自投收入','代投服务费','代投消耗','自然流分成比例','他投分成比例'];
-  const missingS1 = requiredS1.filter(k => !s1keys.includes(k));
-  const missingS2 = requiredS2.filter(k => !s2keys.includes(k));
-  if (missingS1.length) { showError('Sheet1 缺少列：' + missingS1.join('、')); return; }
-  if (missingS2.length) { showError('Sheet2 缺少列：' + missingS2.join('、')); return; }
-
-  // 建 Sheet2 索引
+function analyzeA(s1, s2) {
   const s2map = {};
-  sheet2Data.forEach(r => s2map[String(r['漫剧ID'])] = r);
+  s2.forEach(r => s2map[String(r['漫剧ID'])] = r);
+  const n = (r, k) => Number(r[k] || 0);
 
-  let errCount1 = 0, errCount2 = 0;
-  const rows = [];
-
-  sheet1Data.forEach(r1 => {
+  analysisData = s1.map(r1 => {
     const id = String(r1['漫剧ID']);
     const r2 = s2map[id] || {};
-
-    const n = k => Number(r2[k] || 0);
-
-    // 收入对比
-    const s1收入 = Number(r1['总收入']);
-    const s2收入 = n('自然流收入') + n('分销收入') + n('自投收入');
-    const 收入ok = Math.abs(s1收入 - s2收入) < 0.01;
-
-    // 成本对比
-    const s1成本 = Number(r1['总成本']);
-    const s2成本 = n('分销成本') + n('代投服务费') + n('代投消耗');
-    const 成本ok = Math.abs(s1成本 - s2成本) < 0.01;
-
-    // 结算金额计算
-    const 自然流 = Math.max(n('自然流收入') * n('自然流分成比例'), 0);
-    const 他投比 = n('他投分成比例');
-    const 分销项 = Math.max((n('分销收入') - n('分销成本')) * 他投比, 0);
-    const 自投项 = Math.max((n('自投收入') - n('代投服务费') - n('代投消耗')) * 他投比, 0);
-    const 计算结算 = 自然流 + 分销项 + 自投项;
-
-    // 结算金额对比
-    const s1结算 = Number(r1['结算金额']);
-    const 结算ok = Math.abs(s1结算 - 计算结算) < 0.01;
-
-    if (!收入ok || !成本ok) errCount1++;
-    if (!结算ok) errCount2++;
-
-    rows.push({ id, r1, r2: r2 || {}, s1收入, s2收入, 收入ok, s1成本, s2成本, 成本ok,
-      自然流, 分销项, 自投项, 计算结算, s1结算, 结算ok,
-      自然流分成比例: n('自然流分成比例'), 他投分成比例: 他投比 });
+    const s1收入 = n(r1,'总收入'), s2收入 = n(r2,'自然流收入')+n(r2,'分销收入')+n(r2,'自投收入');
+    const s1成本 = n(r1,'总成本'), s2成本 = n(r2,'分销成本')+n(r2,'代投服务费')+n(r2,'代投消耗');
+    const 收入ok = Math.abs(s1收入-s2收入) < 0.01;
+    const 成本ok = Math.abs(s1成本-s2成本) < 0.01;
+    const 自然流 = Math.max(n(r2,'自然流收入')*n(r2,'自然流分成比例'), 0);
+    const 他投比 = n(r2,'他投分成比例');
+    const 分销项 = Math.max((n(r2,'分销收入')-n(r2,'分销成本'))*他投比, 0);
+    const 自投项 = Math.max((n(r2,'自投收入')-n(r2,'代投服务费')-n(r2,'代投消耗'))*他投比, 0);
+    const 计算结算 = 自然流+分销项+自投项;
+    const s1结算 = n(r1,'结算金额');
+    const 结算ok = Math.abs(s1结算-计算结算) < 0.01;
+    const hasErr = !收入ok || !成本ok || !结算ok;
+    return { id, s1收入,s2收入,收入ok, s1成本,s2成本,成本ok, 自然流,分销项,自投项,计算结算,s1结算,结算ok, hasErr };
   });
 
-  analysisResult = rows;
-  renderResults(rows, errCount1, errCount2);
+  renderA();
 }
 
-function fmt(v) { return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 }); }
-function pct(v) { return (v * 100).toFixed(0) + '%'; }
+function fmt(v) { return Number(v).toLocaleString('zh-CN',{maximumFractionDigits:2}); }
 
-function renderResults(rows, errCount1, errCount2) {
-  const total = rows.length;
+function filterRows(mode) {
+  currentFilter = mode;
+  ['all','err','ok'].forEach(m => {
+    const btn = document.getElementById('filter-'+m);
+    btn.className = m === mode
+      ? 'px-3 py-1 rounded-lg text-sm bg-indigo-600 text-white font-medium'
+      : 'px-3 py-1 rounded-lg text-sm bg-slate-100 text-slate-600 hover:bg-slate-200';
+  });
+  renderA();
+}
+
+function renderA() {
+  const search = (document.getElementById('searchInput').value || '').toLowerCase();
+  let rows = analysisData;
+  if (currentFilter === 'err') rows = rows.filter(r => r.hasErr);
+  if (currentFilter === 'ok')  rows = rows.filter(r => !r.hasErr);
+  if (search) rows = rows.filter(r => r.id.toLowerCase().includes(search));
+
+  const errCount1 = analysisData.filter(r => !r.收入ok||!r.成本ok).length;
+  const errCount2 = analysisData.filter(r => !r.结算ok).length;
+  const total = analysisData.length;
 
   // 汇总卡
-  document.getElementById('summaryCards').innerHTML = [
-    { label:'数据行数', val: total + ' 行', color:'text-slate-800' },
-    { label:'收入/成本差异', val: errCount1 + ' 条', color: errCount1 ? 'text-red-600' : 'text-green-600' },
-    { label:'结算金额差异', val: errCount2 + ' 条', color: errCount2 ? 'text-red-600' : 'text-green-600' },
-    { label:'数据状态', val: (errCount1+errCount2 === 0) ? '✅ 全部一致' : '⚠️ 有差异', color: (errCount1+errCount2===0) ? 'text-green-600' : 'text-amber-600' },
-  ].map(c => `<div class="section py-4 text-center">
-    <div class="text-xl font-bold ${c.color}">${c.val}</div>
-    <div class="text-xs text-slate-500 mt-1">${c.label}</div>
+  document.getElementById('summaryCards-a').innerHTML = [
+    { label:'数据行数', val: total+' 行', color:'text-slate-800' },
+    { label:'收入/成本差异', val: errCount1+' 条', color: errCount1?'text-red-600':'text-green-600' },
+    { label:'结算金额差异', val: errCount2+' 条', color: errCount2?'text-red-600':'text-green-600' },
+    { label:'数据状态', val: (errCount1+errCount2===0)?'✅ 全部一致':'⚠️ 有差异', color: (errCount1+errCount2===0)?'text-green-600':'text-amber-600' },
+  ].map(c=>`<div class="card py-4 text-center mb-0">
+    <div class="text-lg font-bold ${c.color}">${c.val}</div>
+    <div class="text-xs text-slate-500 mt-0.5">${c.label}</div>
   </div>`).join('');
 
-  // Badge
   const setBadge = (id, err) => {
     const el = document.getElementById(id);
-    if (err === 0) { el.textContent = '✅ 全部一致'; el.className = 'badge tag-ok'; }
-    else { el.textContent = `⚠️ ${err} 条差异`; el.className = 'badge tag-err'; }
+    el.textContent = err===0 ? '✅ 全部一致' : `⚠️ ${err} 条差异`;
+    el.className = 'badge ' + (err===0 ? 'tag-ok' : 'tag-err');
   };
-  setBadge('badge1', errCount1);
-  setBadge('badge2', errCount2);
+  setBadge('badge1-a', errCount1);
+  setBadge('badge2-a', errCount2);
 
-  // 表1：收入/成本对比
-  const t1 = document.getElementById('table1');
-  t1.innerHTML = `<tr>
-    <th>漫剧ID</th>
-    <th>Sheet1 总收入</th><th>Sheet2 明细收入合计<br><small style="font-weight:400;color:#94a3b8">自然流+分销+自投</small></th><th>收入状态</th>
-    <th>Sheet1 总成本</th><th>Sheet2 明细成本合计<br><small style="font-weight:400;color:#94a3b8">分销成本+服务费+消耗</small></th><th>成本状态</th>
-  </tr>` + rows.map(r => `<tr>
-    <td class="font-mono text-slate-600">${r.id}</td>
-    <td class="${r.收入ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1收入)}</td>
-    <td class="${r.收入ok?'cell-ok':'cell-err'} text-right">${fmt(r.s2收入)}</td>
-    <td class="text-center">${r.收入ok ? '<span class="badge tag-ok">✓ 一致</span>' : `<span class="badge tag-err">✗ 差 ${fmt(r.s1收入-r.s2收入)}</span>`}</td>
-    <td class="${r.成本ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1成本)}</td>
-    <td class="${r.成本ok?'cell-ok':'cell-err'} text-right">${fmt(r.s2成本)}</td>
-    <td class="text-center">${r.成本ok ? '<span class="badge tag-ok">✓ 一致</span>' : `<span class="badge tag-err">✗ 差 ${fmt(r.s1成本-r.s2成本)}</span>`}</td>
-  </tr>`).join('');
+  // 表1
+  document.getElementById('table1-a').innerHTML =
+    `<tr><th>漫剧ID</th><th>Sheet1 总收入</th><th>Sheet2 收入合计</th><th>收入状态</th><th>Sheet1 总成本</th><th>Sheet2 成本合计</th><th>成本状态</th></tr>` +
+    rows.map(r=>`<tr>
+      <td class="font-mono text-slate-600 text-xs">${r.id}</td>
+      <td class="${r.收入ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1收入)}</td>
+      <td class="${r.收入ok?'cell-ok':'cell-err'} text-right">${fmt(r.s2收入)}</td>
+      <td class="text-center">${r.收入ok?'<span class="badge tag-ok">✓</span>':`<span class="badge tag-err">差 ${fmt(r.s1收入-r.s2收入)}</span>`}</td>
+      <td class="${r.成本ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1成本)}</td>
+      <td class="${r.成本ok?'cell-ok':'cell-err'} text-right">${fmt(r.s2成本)}</td>
+      <td class="text-center">${r.成本ok?'<span class="badge tag-ok">✓</span>':`<span class="badge tag-err">差 ${fmt(r.s1成本-r.s2成本)}</span>`}</td>
+    </tr>`).join('');
 
-  // 表2：结算金额计算
-  const t2 = document.getElementById('table2');
-  t2.innerHTML = `<tr>
-    <th>漫剧ID</th>
-    <th>自然流分成<br><small style="font-weight:400;color:#94a3b8">自然流收入×比例</small></th>
-    <th>分销项<br><small style="font-weight:400;color:#94a3b8">(分销收入-成本)×比例</small></th>
-    <th>自投项<br><small style="font-weight:400;color:#94a3b8">(自投-服务费-消耗)×比例</small></th>
-    <th>计算结算金额</th>
-    <th>Sheet1 结算金额</th>
-    <th>结算状态</th>
-  </tr>` + rows.map(r => `<tr>
-    <td class="font-mono text-slate-600">${r.id}</td>
-    <td class="cell-calc text-right">${fmt(r.自然流)}</td>
-    <td class="cell-calc text-right">${fmt(r.分销项)}</td>
-    <td class="cell-calc text-right">${fmt(r.自投项)}</td>
-    <td class="cell-calc text-right font-bold">${fmt(r.计算结算)}</td>
-    <td class="${r.结算ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1结算)}</td>
-    <td class="text-center">${r.结算ok ? '<span class="badge tag-ok">✓ 一致</span>' : `<span class="badge tag-err">✗ 差 ${fmt(r.s1结算-r.计算结算)}</span>`}</td>
-  </tr>`).join('');
+  // 表2
+  document.getElementById('table2-a').innerHTML =
+    `<tr><th>漫剧ID</th><th>自然流分成</th><th>分销项</th><th>自投项</th><th>计算结算金额</th><th>Sheet1 结算金额</th><th>结算状态</th></tr>` +
+    rows.map(r=>`<tr>
+      <td class="font-mono text-slate-600 text-xs">${r.id}</td>
+      <td class="cell-calc text-right">${fmt(r.自然流)}</td>
+      <td class="cell-calc text-right">${fmt(r.分销项)}</td>
+      <td class="cell-calc text-right">${fmt(r.自投项)}</td>
+      <td class="cell-calc text-right font-bold">${fmt(r.计算结算)}</td>
+      <td class="${r.结算ok?'cell-ok':'cell-err'} text-right">${fmt(r.s1结算)}</td>
+      <td class="text-center">${r.结算ok?'<span class="badge tag-ok">✓</span>':`<span class="badge tag-err">差 ${fmt(r.s1结算-r.计算结算)}</span>`}</td>
+    </tr>`).join('');
 
-  document.getElementById('results').classList.remove('hidden');
+  document.getElementById('results-a').classList.remove('hidden');
 }
 
-// ===== 下载 Excel =====
 function downloadResult() {
   const wb = XLSX.utils.book_new();
-
-  // Sheet1 数据 + 校验列
-  const s1out = analysisResult.map(r => ({
-    '漫剧ID': r.id,
-    'Sheet1_总收入': r.s1收入,
-    'Sheet2_收入合计': r.s2收入,
-    '收入差异': r.s1收入 - r.s2收入,
-    '收入是否一致': r.收入ok ? '✓' : '✗',
-    'Sheet1_总成本': r.s1成本,
-    'Sheet2_成本合计': r.s2成本,
-    '成本差异': r.s1成本 - r.s2成本,
-    '成本是否一致': r.成本ok ? '✓' : '✗',
+  const s1out = analysisData.map(r=>({
+    '漫剧ID':r.id, 'Sheet1_总收入':r.s1收入, 'Sheet2_收入合计':r.s2收入,
+    '收入差异':r.s1收入-r.s2收入, '收入是否一致':r.收入ok?'✓':'✗',
+    'Sheet1_总成本':r.s1成本, 'Sheet2_成本合计':r.s2成本,
+    '成本差异':r.s1成本-r.s2成本, '成本是否一致':r.成本ok?'✓':'✗',
+  }));
+  const s2out = analysisData.map(r=>({
+    '漫剧ID':r.id, '自然流分成':r.自然流, '分销项':r.分销项, '自投项':r.自投项,
+    '计算结算金额':r.计算结算, 'Sheet1_结算金额':r.s1结算,
+    '结算差异':r.s1结算-r.计算结算, '结算是否一致':r.结算ok?'✓':'✗',
   }));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s1out), '收入成本校验');
-
-  // Sheet2 结算计算
-  const s2out = analysisResult.map(r => ({
-    '漫剧ID': r.id,
-    '自然流分成': r.自然流,
-    '分销项': r.分销项,
-    '自投项': r.自投项,
-    '计算结算金额(J列)': r.计算结算,
-    'Sheet1_结算金额': r.s1结算,
-    '结算差异': r.s1结算 - r.计算结算,
-    '结算是否一致': r.结算ok ? '✓' : '✗',
-  }));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s2out), '结算金额核对');
-
   XLSX.writeFile(wb, '漫剧结算分析结果.xlsx');
 }
 </script>
